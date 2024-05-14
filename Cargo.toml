@@ -1,14 +1,18 @@
 [workspace]
 members = [
     "crates/common",
-    "crates/compiler",
     "crates/crypto",
+    "crates/gateway-test-fixtures",
+    "crates/gateway-types",
+    "crates/serde",
+]
+exclude = [
+    "crates/compiler",
     "crates/ethereum",
     "crates/executor",
     "crates/gateway-client",
-    "crates/gateway-test-fixtures",
     "crates/gateway-test-utils",
-    "crates/gateway-types",
+    "crates/load-test",
     "crates/merkle-tree",
     "crates/p2p",
     "crates/p2p_proto",
@@ -17,12 +21,8 @@ members = [
     "crates/pathfinder",
     "crates/retry",
     "crates/rpc",
-    "crates/serde",
-    "crates/storage",
-]
-exclude = [
-    "crates/load-test",
     "crates/stark_hash_python",
+    "crates/storage",
     "utils/pathfinder-probe",
 ]
 resolver = "2"

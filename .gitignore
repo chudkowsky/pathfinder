@@ -25,3 +25,6 @@ pathfinder-var.env
 
 # mdbook compilation
 **/book/
+
+# Cargo.lock is not necessary in this fork as we only want hashing libraries
+Cargo.lock
