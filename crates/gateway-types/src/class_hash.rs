@@ -390,7 +390,7 @@ fn compute_cairo_class_hash(
 ///
 /// [starknet-doc]: https://docs.starknet.io/documentation/architecture_and_concepts/Contracts/class-hash/
 /// [cairo-compute]: https://github.com/starkware-libs/cairo-lang/blob/12ca9e91bbdc8a423c63280949c7e34382792067/src/starkware/starknet/core/os/contract_class/contract_class.cairo#L42
-fn compute_sierra_class_hash(
+pub fn compute_sierra_class_hash(
     contract_definition: json::SierraContractDefinition<'_>,
 ) -> Result<ClassHash> {
     use EntryPointType::*;
