@@ -9,4 +9,5 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("pathfinder_getProof",             methods::get_proof)
         .register("pathfinder_getTransactionStatus", methods::get_transaction_status)
         .register("pathfinder_getClassProof",        methods::get_proof_class)
+        .register("pathfinder_getStateProof",        methods::get_state_proof)
 }

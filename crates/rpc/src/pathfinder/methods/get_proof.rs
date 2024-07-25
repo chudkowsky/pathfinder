@@ -24,6 +24,12 @@ pub struct GetProofInputClass {
     pub keys: Vec<StorageAddress>,
 }
 
+#[derive(Deserialize, Debug, PartialEq, Eq)]
+pub struct GetStateProofInput {
+    pub block_id: BlockId,
+    pub contract_addresses: Vec<ContractAddress>,
+}
+
 // FIXME: allow `generate_rpc_error_subset!` to work with enum struct variants.
 // This may not actually be possible though.
 #[derive(Debug)]
@@ -169,6 +175,18 @@ pub struct GetProofOutputClass {
     class_commitment: Option<ClassCommitment>,
     /// Membership / Non-membership proof for the queried contract classes
     class_proof: ProofNodes,
+}
+
+#[derive(Debug, Serialize)]
+#[skip_serializing_none]
+pub struct GetStateProofOutput {
+    /// Required to verify that the hash of the class commitment and the root of
+    /// the [contract_proof](GetProofOutput::contract_proof) matches the
+    /// [state_commitment](Self#state_commitment). Present only for Starknet
+    /// blocks 0.11.0 onwards.
+    state_commitment: Option<StateCommitment>,
+    /// Membership / Non-membership proof for the queried contract
+    state_proof: ProofNodes,
 }
 
 /// Returns all the necessary data to trustlessly verify storage slots for a
@@ -344,6 +362,91 @@ pub async fn get_proof_class(
             ClassCommitment::ZERO => None,
             other => Some(other),
         };
+
+        // Generate a proof for this class. If the class does not exist, this will
+        // be a "non membership" proof.
+        let class_proof = ClassCommitmentTree::get_proof(&tx, header.number, input.class_hash)
+            .context("Creating contract proof")?
+            .ok_or(GetProofError::ProofMissing)?;
+        let class_proof = ProofNodes(class_proof);
+
+        let class_root_exists = tx
+            .class_root_exists(header.number)
+            .context("Fetching class root existence")?;
+
+        if !class_root_exists {
+            return Ok(GetProofOutputClass {
+                class_commitment,
+                class_proof,
+            });
+        };
+
+        let mut class_proofs = Vec::new();
+        for k in &input.keys {
+            let proof = ClassStorageTree::get_proof(&tx, header.number, k.view_bits())
+                .context("Get proof from class tree")?
+                .ok_or_else(|| {
+                    let e = anyhow!(
+                        "Storage proof missing for key {:?}, but should be present",
+                        k
+                    );
+                    tracing::warn!("{e}");
+                    e
+                })?;
+            class_proofs.push(ProofNodes(proof));
+        }
+
+        Ok(GetProofOutputClass {
+            class_commitment,
+            class_proof,
+        })
+    });
+
+    jh.await.context("Database read panic or shutting down")?
+}
+
+/// Returns all the necessary data to trustlessly verify global state changes.
+pub async fn get_state_proof(
+    context: RpcContext,
+    input: GetStateProofInput,
+) -> Result<GetStateProofOutput, GetProofError> {
+    const MAX_CONTRACTS: usize = 100;
+    if input.contract_addresses.len() > MAX_CONTRACTS {
+        return Err(GetProofError::ProofLimitExceeded {
+            limit: MAX_CONTRACTS as u32,
+            requested: input.contract_addresses.len() as u32,
+        });
+    }
+
+    let block_id = match input.block_id {
+        BlockId::Pending => {
+            return Err(GetProofError::Internal(anyhow!(
+                "'pending' is not currently supported by this method!"
+            )))
+        }
+        other => other.try_into().expect("Only pending cast should fail"),
+    };
+
+    let storage = context.storage.clone();
+    let span = tracing::Span::current();
+
+    let jh = tokio::task::spawn_blocking(move || {
+        let _g = span.enter();
+        let mut db = storage
+            .connection()
+            .context("Opening database connection")?;
+
+        let tx = db.transaction().context("Creating database transaction")?;
+
+        // Use internal error to indicate that the process of querying for a particular
+        // block failed, which is not the same as being sure that the block is
+        // not in the db.
+        let header = tx
+            .block_header(block_id)
+            .context("Fetching block header")?
+            .ok_or(GetProofError::BlockNotFound)?;
+
+        let state_commitment = header.state_commitment;
 
         // Generate a proof for this class. If the class does not exist, this will
         // be a "non membership" proof.
